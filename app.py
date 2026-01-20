@@ -1,6 +1,7 @@
 import streamlit as st
 import tempfile
 from pypdf import PdfReader
+from groq import Groq
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -44,7 +45,7 @@ if not groq_api_key:
 # -----------------------------
 llm = ChatGroq(
     groq_api_key=groq_api_key,
-    model_name="llama3-8b-8192"
+    model_name="llama-3.3-70b-versatile"
 )
 
 
