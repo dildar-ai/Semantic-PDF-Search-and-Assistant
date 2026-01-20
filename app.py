@@ -1,17 +1,32 @@
 import streamlit as st
 import tempfile
+from pypdf import PdfReader
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import PyPDFLoader
 from langchain_groq import ChatGroq
+
+
+# -----------------------------
+# Simple Text Splitter (OWN)
+# -----------------------------
+def split_text(text, chunk_size=1000, overlap=200):
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        chunks.append(chunk)
+        start = end - overlap
+    return chunks
+
 
 # -----------------------------
 # Page Config
 # -----------------------------
 st.set_page_config(page_title="AI PDF Semantic Search", layout="wide")
 st.title("📄 AI PDF Semantic Search & Q&A Assistant")
+
 
 # -----------------------------
 # Sidebar
@@ -23,6 +38,7 @@ if not groq_api_key:
     st.warning("Please enter your Groq API Key.")
     st.stop()
 
+
 # -----------------------------
 # Initialize LLM
 # -----------------------------
@@ -31,35 +47,31 @@ llm = ChatGroq(
     model_name="llama3-8b-8192"
 )
 
+
 # -----------------------------
-# File Upload
+# Upload PDF
 # -----------------------------
-uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
+uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
 if uploaded_file:
-    with st.spinner("Processing PDF..."):
+    with st.spinner("Reading PDF..."):
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(uploaded_file.read())
-            pdf_path = tmp.name
+        reader = PdfReader(uploaded_file)
+        full_text = ""
 
-        loader = PyPDFLoader(pdf_path)
-        documents = loader.load()
+        for page in reader.pages:
+            full_text += page.extract_text()
 
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-        chunks = splitter.split_documents(documents)
+        chunks = split_text(full_text)
 
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
-        vectorstore = FAISS.from_documents(chunks, embeddings)
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+        vectorstore = FAISS.from_texts(chunks, embeddings)
 
-        st.success("✅ PDF processed successfully")
+        st.success("✅ PDF processed successfully!")
+
 
     # -----------------------------
     # User Question
@@ -68,12 +80,12 @@ if uploaded_file:
 
     if query:
         with st.spinner("Thinking..."):
-            docs = retriever.get_relevant_documents(query)
 
+            docs = vectorstore.similarity_search(query, k=4)
             context = "\n\n".join([doc.page_content for doc in docs])
 
             prompt = f"""
-You are an AI assistant. Answer the question using ONLY the context below.
+You are an AI assistant. Answer the question ONLY using the context below.
 
 Context:
 {context}
