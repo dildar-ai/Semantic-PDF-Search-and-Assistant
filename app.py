@@ -33,7 +33,7 @@ st.title("📄 AI PDF Semantic Search & Q&A Assistant")
 # Sidebar
 # -----------------------------
 st.sidebar.header("🔑 Configuration")
-groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
+groq_api_key = "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"
 
 if not groq_api_key:
     st.warning("Please enter your Groq API Key.")
