@@ -1,28 +1,26 @@
 import streamlit as st
-import os
 import tempfile
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFLoader
-from langchain.chains import RetrievalQA
-
+from langchain_groq import ChatGroq
 
 # -----------------------------
-# Streamlit Page Config
+# Page Config
 # -----------------------------
 st.set_page_config(page_title="AI PDF Semantic Search", layout="wide")
 st.title("📄 AI PDF Semantic Search & Q&A Assistant")
 
 # -----------------------------
-# Sidebar - API Key
+# Sidebar
 # -----------------------------
-st.sidebar.title("🔑 Configuration")
-groq_api_key = "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"
+st.sidebar.header("🔑 Configuration")
+groq_api_key = st.sidebar.text_input("Enter Groq API Key", type="password")
 
 if not groq_api_key:
-    st.warning("Please enter your Groq API Key in the sidebar.")
+    st.warning("Please enter your Groq API Key.")
     st.stop()
 
 # -----------------------------
@@ -36,58 +34,58 @@ llm = ChatGroq(
 # -----------------------------
 # File Upload
 # -----------------------------
-uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
 
 if uploaded_file:
     with st.spinner("Processing PDF..."):
 
-        # Save PDF temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            tmp_file.write(uploaded_file.read())
-            pdf_path = tmp_file.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(uploaded_file.read())
+            pdf_path = tmp.name
 
-        # Load PDF
         loader = PyPDFLoader(pdf_path)
         documents = loader.load()
 
-        # Split text into chunks
-        text_splitter = RecursiveCharacterTextSplitter(
+        splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200
         )
-        chunks = text_splitter.split_documents(documents)
+        chunks = splitter.split_documents(documents)
 
-        # Create embeddings
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
-        # Vector store
         vectorstore = FAISS.from_documents(chunks, embeddings)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-        # Create Retrieval QA Chain
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
-            chain_type="stuff",
-            retriever=vectorstore.as_retriever(search_kwargs={"k": 4}),
-            return_source_documents=True
-        )
-
-        st.success("✅ PDF processed successfully!")
+        st.success("✅ PDF processed successfully")
 
     # -----------------------------
     # User Question
     # -----------------------------
-    query = st.text_input("Ask a question about the PDF:")
+    query = st.text_input("Ask a question about the PDF")
 
     if query:
-        with st.spinner("Generating answer..."):
-            result = qa_chain(query)
+        with st.spinner("Thinking..."):
+            docs = retriever.get_relevant_documents(query)
+
+            context = "\n\n".join([doc.page_content for doc in docs])
+
+            prompt = f"""
+You are an AI assistant. Answer the question using ONLY the context below.
+
+Context:
+{context}
+
+Question:
+{query}
+"""
+
+            response = llm.invoke(prompt)
 
             st.subheader("🧠 Answer")
-            st.write(result["result"])
+            st.write(response.content)
 
-            with st.expander("📌 Source Chunks"):
-                for doc in result["source_documents"]:
-                    st.write(doc.page_content)
-                    st.markdown("---")
+            with st.expander("📌 Retrieved Context"):
+                st.write(context)
